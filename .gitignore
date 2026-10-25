@@ -13,11 +13,11 @@ models/
 # Audio hasil dan referensi suara
 # =========================
 output/
-profile/
-*.wav
-*.mp3
-*.ogg
-*.flac
+# profile/
+# *.wav
+# *.mp3
+# *.ogg
+# *.flac
 
 # =========================
 # Python

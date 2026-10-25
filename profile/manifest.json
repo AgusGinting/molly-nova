@@ -1,0 +1,37 @@
+{
+  "format": "ovsvoice",
+  "schema_version": 1,
+  "omnivoice_version": "0.5.6",
+  "exported_at": 1792702027.1447878,
+  "persona": {
+    "name": "VoiceStudio Demo Voice",
+    "kind": "clone",
+    "language": "English",
+    "personality": "",
+    "instruct": "",
+    "ref_text": "Halo, nama saya Nova. Saya adalah seorang pelajar berusia 17 tahun yang saat ini tinggal di kota Tanggerang. Banyak orang kenal saya sebagai pribadi yang ramah, santai.",
+    "seed": null,
+    "is_locked": false,
+    "vd_states": null
+  },
+  "engine": {
+    "id": "",
+    "design_params": null
+  },
+  "license": {
+    "spdx": "LicenseRef-VoiceStudio-Personal",
+    "custom_text": null
+  },
+  "tags": [],
+  "preview": {
+    "file": "preview.wav",
+    "watermarked": true,
+    "duration_s": 8.0,
+    "sample_rate": 24000
+  },
+  "members": {
+    "ref_audio": "ref_audio.ogg",
+    "locked_audio": null,
+    "consent_audio": null
+  }
+}
