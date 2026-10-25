@@ -1,0 +1,70 @@
+# =========================
+# Model AI berukuran besar
+# =========================
+models/
+*.gguf
+*.safetensors
+*.onnx
+*.pt
+*.pth
+*.bin
+
+# =========================
+# Audio hasil dan referensi suara
+# =========================
+output/
+profile/
+*.wav
+*.mp3
+*.ogg
+*.flac
+
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# =========================
+# Build dan file sementara
+# =========================
+build/
+dist/
+tmp/
+temp/
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+
+# =========================
+# Environment dan rahasia
+# =========================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# =========================
+# Sistem operasi dan editor
+# =========================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# =========================
+# Paket instalasi lokal
+# =========================
+*.deb
