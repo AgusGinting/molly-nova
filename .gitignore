@@ -10,21 +10,18 @@ models/
 *.bin
 
 # =========================
-# Audio hasil dan referensi suara
+# Audio hasil
+# Folder profile/ sengaja tidak diabaikan: start_nova.sh membutuhkan
+# referensi suara di dalamnya.
 # =========================
 output/
-# profile/
-# *.wav
-# *.mp3
-# *.ogg
-# *.flac
+output_tts_jetson/
 
 # =========================
 # Python
 # =========================
 __pycache__/
 *.py[cod]
-*.pyo
 .venv/
 venv/
 env/
@@ -44,6 +41,8 @@ temp/
 *.bak
 *.swp
 *~
+.bench_tmp/
+backup_*/
 
 # =========================
 # Environment dan rahasia
@@ -61,6 +60,7 @@ credentials/
 # =========================
 .DS_Store
 Thumbs.db
+*:Zone.Identifier
 .vscode/
 .idea/
 

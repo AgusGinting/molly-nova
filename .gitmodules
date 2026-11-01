@@ -1,0 +1,9 @@
+[submodule "src/llama.cpp"]
+	path = src/llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "src/omnivoice.cpp"]
+	path = src/omnivoice.cpp
+	url = https://github.com/ServeurpersoCom/omnivoice.cpp.git
+[submodule "src/whisper.cpp"]
+	path = src/whisper.cpp
+	url = https://github.com/ggml-org/whisper.cpp.git
