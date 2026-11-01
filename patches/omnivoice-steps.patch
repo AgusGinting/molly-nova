@@ -1,0 +1,78 @@
+diff --git a/src/tts-server.h b/src/tts-server.h
+index a00b997..f1d69a1 100644
+--- a/src/tts-server.h
++++ b/src/tts-server.h
+@@ -46,6 +46,11 @@ struct tts_request {
+     // random seed per request, matching the CLI convention; anything
+     // else forwards verbatim for reproducible output.
+     int64_t seed;
++
++    // Optional MaskGIT step count for this request. 0 or absent keeps the
++    // server default (--steps). Lets a client trade quality for latency
++    // per sentence, e.g. fewer steps for the first sentence of a reply.
++    int steps;
+ };
+ 
+ // One voice registration parsed from the POST /v1/audio/voices JSON body.
+@@ -174,6 +179,14 @@ static bool tts_parse_request(const std::string & body, tts_request & req, std::
+     }
+     req.seed = seed ? yyjson_get_sint(seed) : -1;
+ 
++    yyjson_val * steps = yyjson_obj_get(root, "steps");
++    if (steps && (!yyjson_is_int(steps) || yyjson_get_sint(steps) < 1 || yyjson_get_sint(steps) > 64)) {
++        err = "'steps' must be an integer between 1 and 64";
++        yyjson_doc_free(doc);
++        return false;
++    }
++    req.steps = steps ? (int) yyjson_get_sint(steps) : 0;
++
+     yyjson_doc_free(doc);
+ 
+     if (req.format != "pcm" && req.format != "wav") {
+diff --git a/tools/tts-server.cpp b/tools/tts-server.cpp
+index cf903d0..a0f072f 100644
+--- a/tools/tts-server.cpp
++++ b/tools/tts-server.cpp
+@@ -55,7 +55,8 @@ static void print_usage(const char * prog) {
+             "  --port <n>              Listen port (default: 8080)\n"
+             "  --lang <str>            Language label when a request omits one (default 'None')\n"
+             "  --no-fa                 Disable flash attention\n"
+-            "  --clamp-fp16            Clamp hidden states to FP16 range\n",
++            "  --clamp-fp16            Clamp hidden states to FP16 range\n"
++            "  --steps <int>           MaskGIT decode steps (default: 32)\n",
+             prog);
+ }
+ 
+@@ -74,6 +75,7 @@ int main(int argc, char ** argv) {
+     server_config cfg;
+     bool          use_fa     = true;
+     bool          clamp_fp16 = false;
++    int           mg_steps   = 32;
+ 
+     for (int i = 1; i < argc; i++) {
+         const char * arg = argv[i];
+@@ -93,6 +95,12 @@ int main(int argc, char ** argv) {
+             use_fa = false;
+         } else if (!std::strcmp(arg, "--clamp-fp16")) {
+             clamp_fp16 = true;
++        } else if (!std::strcmp(arg, "--steps") && i + 1 < argc) {
++            mg_steps = std::atoi(argv[++i]);
++            if (mg_steps < 1) {
++                fprintf(stderr, "[Server] ERROR: --steps must be >= 1\n");
++                return 1;
++            }
+         } else {
+             print_usage(argv[0]);
+             return 1;
+@@ -209,9 +217,10 @@ int main(int argc, char ** argv) {
+     // granularity, the same path either way. A named voice injects its
+     // pre-encoded reference ; an unknown name is rejected instead of
+     // silently falling back to voice design.
+-    be.synthesize = [ov, &lang](const tts_request & req, const tts_sink & sink, std::string & err) -> int {
++    be.synthesize = [ov, &lang, mg_steps](const tts_request & req, const tts_sink & sink, std::string & err) -> int {
+         struct ov_tts_params p;
+         ov_tts_default_params(&p);
++        p.mg_num_step = req.steps > 0 ? req.steps : mg_steps;
+         p.text = req.input.c_str();
+         p.lang = req.lang.empty() ? lang.c_str() : req.lang.c_str();
+ 
