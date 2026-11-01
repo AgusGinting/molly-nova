@@ -3,12 +3,15 @@ set -Eeuo pipefail
 
 ROOT="/mnt/d/tts-test-wsl"
 VOICE_DIR="$ROOT/profile"
+# Referensi suara. ref_mid = 5,4 detik (cepat, tempo normal).
+# Ganti ke ref_short (7 detik) atau ref (15 detik) jika kemiripan suara kurang.
+REF_NAME="${REF_NAME:-ref_mid}"
 SERVER_DIR="$ROOT/src/omnivoice.cpp"
 PORT=8080
 API="http://127.0.0.1:$PORT"
 
 # Pastikan profil tersedia
-for file in "$VOICE_DIR/ref.txt" "$VOICE_DIR/ref.rvq"; do
+for file in "$VOICE_DIR/$REF_NAME.txt" "$VOICE_DIR/$REF_NAME.rvq"; do
     if [[ ! -f "$file" ]]; then
         echo "ERROR: File profil tidak ditemukan: $file"
         exit 1
@@ -28,6 +31,7 @@ echo "=== Menjalankan OmniVoice ==="
 ./build/tts-server \
     --model models/omnivoice-base-Q8_0.gguf \
     --codec models/omnivoice-tokenizer-F32.gguf \
+    --steps 16    \
     --device CUDA0 \
     --lang Indonesian \
     --port "$PORT" &
@@ -62,12 +66,12 @@ if [[ "$READY" != 1 ]]; then
 fi
 
 
-echo "=== Mendaftarkan voice nova ==="
+echo "=== Mendaftarkan voice nova ($REF_NAME) ==="
 
 REF_TEXT=$(python3 -c \
     'import json,sys; print(json.dumps(open(sys.argv[1]).read().strip()))' \
-    "$VOICE_DIR/ref.txt")
-RVQ_B64=$(base64 -w0 "$VOICE_DIR/ref.rvq")
+    "$VOICE_DIR/$REF_NAME.txt")
+RVQ_B64=$(base64 -w0 "$VOICE_DIR/$REF_NAME.rvq")
 
 PAYLOAD=$(python3 -c \
     'import json,sys; print(json.dumps({"name":"nova","ref_text":json.loads(sys.argv[1]),"rvq_b64":sys.argv[2]}))' \

@@ -1,10 +1,8 @@
-import json
-import urllib.request
 import urllib.error
-import subprocess
-import shutil
 from pathlib import Path
 from datetime import datetime
+
+from nova_stream import SentenceChunker, SpeechPipeline, stream_ollama, warm_up
 
 # =========================
 # KONFIGURASI
@@ -15,6 +13,10 @@ OLLAMA_MODEL = "gemma3:1b"
 TTS_URL = "http://localhost:8080/v1/audio/speech"
 TTS_VOICE = "nova"
 TTS_LANGUAGE = "Indonesian"
+TTS_SEED = 42  # seed tetap supaya karakter suara konsisten antar kalimat
+
+# Batas panjang jawaban. Jawaban pendek = suara lebih cepat selesai.
+MAX_REPLY_TOKENS = 150
 
 # Folder output Linux
 OUTPUT_DIR = Path.home() / "nova" / "output"
@@ -23,110 +25,70 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 SYSTEM_PROMPT = """
 Kamu adalah Nova, asisten AI pribadi yang ramah, ceria, dan santai.
 Kamu berbicara dalam bahasa Indonesia secara alami.
-Jawab pertanyaan dengan jelas dan ringkas.
-Jangan gunakan emotikon atau stiker.
-Jangan menggunakan Markdown yang rumit karena jawabanmu akan dibacakan.
+Jawab pertanyaan tanpa menggunakan emotikon atau simbol atau stiker.
+Jangan menggunakan Markdown, daftar bernomor, atau poin-poin karena jawabanmu akan dibacakan.
+Jawab singkat, cukup satu sampai tiga kalimat, kecuali pengguna meminta penjelasan panjang.
 """
 
 # Riwayat percakapan selama program berjalan
 messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
 
-def post_json(url, payload, timeout=300):
-    """Mengirim JSON melalui HTTP dan membaca responsnya."""
-    data = json.dumps(payload).encode("utf-8")
-
-    request = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
-
-
-def ask_ollama(user_text):
-    """Menghasilkan jawaban menggunakan Ollama."""
+def reply_and_speak(user_text):
+    """
+    Minta jawaban Ollama secara streaming dan bacakan per kalimat.
+    Kalimat pertama sudah diputar sementara sisa jawaban masih dibuat.
+    """
     messages.append({"role": "user", "content": user_text})
 
+    filename = f"nova_{datetime.now():%Y%m%d_%H%M%S_%f}.wav"
+    pipeline = SpeechPipeline(
+        TTS_URL,
+        TTS_VOICE,
+        language=TTS_LANGUAGE,
+        seed=TTS_SEED,
+        save_path=OUTPUT_DIR / filename,
+    )
+    chunker = SentenceChunker()
+    parts = []
+
     try:
-        raw = post_json(
+        print("\nNova: ", end="", flush=True)
+        for delta in stream_ollama(
             OLLAMA_URL,
-            {
-                "model": OLLAMA_MODEL,
-                "messages": messages,
-                "stream": False,
-                "options": {"num_predict": 256},
-            },
-            timeout=300,
-        )
-
-        result = json.loads(raw.decode("utf-8"))
-        answer = (result.get("message", {}).get("content") or "").strip()
-
-        if not answer:
-            raise RuntimeError(
-                "Ollama menghasilkan jawaban kosong. "
-                "Coba model lain atau periksa konfigurasi thinking."
-            )
-
-        messages.append({"role": "assistant", "content": answer})
-
-        return answer
-
+            OLLAMA_MODEL,
+            messages,
+            options={"num_predict": MAX_REPLY_TOKENS},
+        ):
+            parts.append(delta)
+            print(delta, end="", flush=True)
+            for sentence in chunker.feed(delta):
+                pipeline.say(sentence)
+        for sentence in chunker.flush():
+            pipeline.say(sentence)
+        print("\n")
     except Exception:
         # Hapus pesan user jika gagal diproses
         if messages and messages[-1].get("role") == "user":
             messages.pop()
+        pipeline.finish()
         raise
 
-
-def speak(text):
-    """Mengubah teks menjadi file WAV menggunakan OmniVoice."""
-    filename = f"nova_{datetime.now():%Y%m%d_%H%M%S_%f}.wav"
-    output_path = OUTPUT_DIR / filename
-
-    audio = post_json(
-        TTS_URL,
-        {
-            "input": text,
-            "voice": TTS_VOICE,
-            "language": TTS_LANGUAGE,
-            "response_format": "wav",
-        },
-        timeout=300,
-    )
-
-    if not audio or not audio.startswith(b"RIFF"):
+    answer = "".join(parts).strip()
+    if not answer:
+        messages.pop()
+        pipeline.finish()
         raise RuntimeError(
-            "Respons TTS bukan file WAV yang valid. " "Periksa log server OmniVoice."
+            "Ollama menghasilkan jawaban kosong. "
+            "Coba model lain atau periksa konfigurasi thinking."
         )
+    messages.append({"role": "assistant", "content": answer})
 
-    output_path.write_bytes(audio)
-    return output_path
-
-
-def play_audio(path):
-    """Memutar audio menggunakan pemutar Linux."""
-    players = [
-        ["paplay", str(path)],
-        ["aplay", str(path)],
-        ["ffplay", "-nodisp", "-autoexit", "-loglevel", "error", str(path)],
-    ]
-
-    for command in players:
-        if shutil.which(command[0]):
-            try:
-                subprocess.run(command, check=True)
-                return
-            except subprocess.CalledProcessError:
-                continue
-
-    print(f"Audio tersimpan di: {path}")
-    print("Pemutar audio tidak ditemukan atau gagal memutar.")
-    print("Instal salah satu: pulseaudio-utils, alsa-utils, atau ffmpeg.")
+    # Tunggu sampai semua kalimat selesai diputar.
+    audio_path = pipeline.finish()
+    for error in pipeline.errors:
+        print(f"Peringatan: {error}")
+    return audio_path
 
 
 def main():
@@ -138,6 +100,13 @@ def main():
     print(f"Output: {OUTPUT_DIR}")
     print("Ketik 'keluar' untuk berhenti.")
     print("Ketik 'reset' untuk menghapus riwayat percakapan.\n")
+
+    print("Memanaskan model...", end=" ", flush=True)
+    try:
+        warm_up(OLLAMA_URL, OLLAMA_MODEL, TTS_URL, TTS_VOICE, TTS_LANGUAGE)
+        print("siap.\n")
+    except Exception as exc:  # noqa: BLE001
+        print(f"gagal ({exc}). Lanjut tanpa pemanasan.\n")
 
     while True:
         try:
@@ -159,16 +128,9 @@ def main():
             continue
 
         try:
-            print("Nova sedang berpikir...")
-            answer = ask_ollama(user_text)
-            print(f"\nNova: {answer}\n")
-
-            print("Nova sedang berbicara...")
-            audio_path = speak(answer)
-            print(f"Audio: {audio_path}")
-
-            play_audio(audio_path)
-            print()
+            audio_path = reply_and_speak(user_text)
+            if audio_path:
+                print(f"Audio: {audio_path}\n")
 
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
